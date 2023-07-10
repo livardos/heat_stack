@@ -1,0 +1,80 @@
+heat_template_version: 2021-04-16
+##Heat Stack to create whole internal network for instances, and Load Balancer, including the pool member and Floating IP Association from external
+#
+parameters:
+   node_count:
+    type: number
+    default: 2
+   internal_network_cidr:
+    type: string
+    label: "Internal CIDR"
+    description: "Internal CIDR. e.g: 10.x.x.0/24"
+   internal_network_subnet:
+    type: string
+    label: "Internal Network Subnet Name"
+    description: "The Name of the Network Subnet"
+   external:
+    type: string
+    label: "External Network"
+    description: "External Network(existing)"
+  
+
+resources:
+  lb_fip: 
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: external}
+
+## Creating Load Balancer ##
+  lb_loadbalancer:
+    type: OS::Octavia::LoadBalancer
+    properties:
+      vip_subnet: {get_resource: int_subnet}
+
+## Creating Instance 1 ##
+  compute_nodes:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: {get_param: node_count}
+      resource_def:
+        type: instance-with-network.yaml
+        properties:
+          external: {get_param: external}
+          flavor: {get_param: instance_flavor}
+          internal_network_cidr: {get_param: internal_network_cidr}
+
+
+## Associating Floating IP to Load Balancer ##
+  lb_association:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: lb_fip }
+      port_id: {get_attr: [lb_loadbalancer, vip_port_id]}
+
+
+## Creating Load Balancer Listener ##
+  lb_listener:
+    type: OS::Octavia::Listener
+    properties:
+      protocol: HTTP
+      protocol_port: 80
+      default_pool: { get_resource: lb_pool }
+      loadbalancer: { get_resource: lb_loadbalancer }
+
+## Creating Load Balancer Pool ##
+  lb_pool:
+    type: OS::Octavia::Pool
+    properties:
+      lb_algorithm: ROUND_ROBIN
+      protocol: HTTP
+      loadbalancer: { get_resource: lb_loadbalancer }
+
+## Adding Load Balancer Pool Member ##
+
+  lb_members:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool: { get_resource: lb_pool }
+      address: { get_attr: [compute_nodes, first_address] }
+      protocol_port: 80
+
