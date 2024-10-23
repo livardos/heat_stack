@@ -13,7 +13,9 @@ parameters:
   internal_name:
     type: string
     default: internal-network
-
+  key_param:
+    type: string
+    default: fif-test
 resources:
   server:
     type: OS::Nova::Server
@@ -21,7 +23,7 @@ resources:
       image: ubuntu-jammy
       flavor: "m1.small"
       availability_zone: nova 
-      key_name: "fif-test"
+      key_name: {get_param: key_param }
       networks:
         - port: { get_resource: server_port }
 
